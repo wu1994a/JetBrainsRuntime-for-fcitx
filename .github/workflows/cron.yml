@@ -1,0 +1,55 @@
+name: Check New Release
+
+on:
+  schedule:
+    - cron: "14 */4 * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      release_not_exist: ${{ steps.fetch.outputs.release_not_exist }}
+      name: ${{ steps.fetch.outputs.name }}
+      tag_name: ${{ steps.fetch.outputs.tag_name }}
+      html_url: ${{ steps.fetch.outputs.html_url }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Fetch latest release
+        id: fetch
+        run: |
+          curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sfL -m 60 -o /tmp/latest.json ${{ github.api_url }}/repos/JetBrains/JetBrainsRuntime/releases/latest
+
+          name=$(jq -r .name /tmp/latest.json)
+          echo "Latest release: $name"
+          echo ::set-output name=name::"$name"
+
+          tag_name=$(jq -r .tag_name /tmp/latest.json)
+          echo "Latest tag: $tag_name"
+          echo ::set-output name=tag_name::"$tag_name"
+
+          html_url=$(jq -r .html_url /tmp/latest.json)
+          echo "Latest release URL: $html_url"
+          echo ::set-output name=html_url::"$html_url"
+
+          http_code=$(curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sL -m 60 -o /tmp/release.json -w "%{http_code}" "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/$tag_name")
+          echo http_code="$http_code"
+          echo body="$(cat /tmp/release.json)"
+
+          release_not_exist=false
+          if [[ "$http_code" == "404" && "$(jq -r '.message' /tmp/release.json)" == 'Not Found' ]]; then
+            release_not_exist=true
+          fi
+          echo ::set-output name=release_not_exist::"$release_not_exist"
+
+
+  build:
+    uses: ./.github/workflows/jbr-linux-x64.yml
+    needs: check
+    if: needs.check.outputs.release_not_exist == 'true'
+    with:
+      ref: ${{ needs.check.outputs.tag_name }}
+      release_name: ${{ needs.check.outputs.name }}
+      release_body: ${{ needs.check.outputs.html_url }}
