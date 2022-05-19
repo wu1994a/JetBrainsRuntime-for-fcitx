@@ -70,7 +70,7 @@ jobs:
         cd jcef
         git log -1
         mkdir jcef_build && cd jcef_build
-        cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ..
+        cmake -G "Unix Makefiles" -DPROJECT_ARCH="x86_64" -DCMAKE_BUILD_TYPE=Release ..
         make -j2
         cd ../jb/tools/linux && chmod +x *
         ./build.sh all
