@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "14 */4 * * *"
   workflow_dispatch:
+    inputs:
+      release_id:
+        required: true
+        default: 'latest'
+        type: string
+        description: "Release id or tag"
 
 jobs:
   check:
@@ -20,7 +26,8 @@ jobs:
       - name: Fetch latest release
         id: fetch
         run: |
-          curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sfL -m 60 -o /tmp/latest.json ${{ github.api_url }}/repos/JetBrains/JetBrainsRuntime/releases/latest
+          RELEASE_ID='${{ github.event.inputs.release_id }}'
+          curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sfL -m 60 -o /tmp/latest.json "${{ github.api_url }}/repos/JetBrains/JetBrainsRuntime/releases/${RELEASE_ID:-latest}"
 
           name=$(jq -r .name /tmp/latest.json)
           echo "Latest release: $name"
