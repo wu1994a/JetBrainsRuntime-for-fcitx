@@ -1,92 +1,104 @@
 name: jbr-linux-x64
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      ref:
-        description: The git ref to use for the build
+      release_id:
         required: true
+        default: 'latest'
         type: string
-      release_name:
-        required: true
-        type: string
-      release_body:
+        description: "Release id or tag"
+      jbr_branch:
         required: false
         type: string
+        description: "JBR branch"
 
 jobs:
   build:
     runs-on: ubuntu-20.04
     steps:
     - name: Clone Repository
-      uses: actions/checkout@v2.4.0
+      uses: actions/checkout@v3
 
     - name: Generate Variables
       id: vars
       run: |
-        ref="${{ inputs.ref }}"
-        if [[ "$ref" != jbr* ]]; then
-          echo "Invalid tag name: $ref"
+        release_id='${{ github.event.inputs.release_id }}'
+        curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sfL -m 60 -o /tmp/latest.json "${{ github.api_url }}/repos/JetBrains/JetBrainsRuntime/releases/${release_id:-latest}"
+
+        release_name=$(jq -r .name /tmp/latest.json)
+        echo "Release: $release_name"
+        echo ::set-output name=release_name::"$release_name"
+
+        html_url=$(jq -r .html_url /tmp/latest.json)
+        echo "Release URL: $html_url"
+        echo ::set-output name=release_body::"$html_url"
+
+        tag_name=$(jq -r .tag_name /tmp/latest.json)
+        echo "Tag: $tag_name"
+        echo ::set-output name=tag_name::"$tag_name"
+
+        if [[ "$tag_name" == jbr17* ]]; then
+          JBSDK_VERSION=$(sed -E 's/^jbr([0-9_.]+)b.*$/\1/' <<< "$tag_name")
+          build_number=$(sed -E 's/^jbr[0-9_.]+b([0-9.]+)$/\1/' <<< "$tag_name")
+        elif [[ "$tag_name" == jbr-release-17.* ]]; then
+          JBSDK_VERSION=$(sed -E 's/^jbr-release-([0-9_.]+)b.*$/\1/' <<< "$tag_name")
+          build_number=$(sed -E 's/^jbr-release-[0-9_.]+b([0-9.]+)$/\1/' <<< "$tag_name")
+        else
+          echo unknown tag name: $tag_name
           exit 1
         fi
 
-        JBSDK_VERSION=$(sed -E 's/^jbr([0-9_]+)b.*$/\1/' <<< "$ref")
+        echo "JBSDK Version: $JBSDK_VERSION"
         echo ::set-output name=JBSDK_VERSION::"$JBSDK_VERSION"
-
-        build_number=$(sed -E 's/^jbr[0-9_]+b([0-9.]+)$/\1/' <<< "$ref")
+        echo "Build Number: $build_number"
         echo ::set-output name=build_number::"$build_number"
 
-        bundle_type=jcef
-        echo ::set-output name=bundle_type::"$bundle_type"
-
-        mkdir official_build && cd official_build
-        curl -sfL -m 600 "https://cache-redirector.jetbrains.com/intellij-jbr/jbr_${bundle_type}-${JBSDK_VERSION}-linux-x64-b${build_number}.tar.gz" | tar --strip-components=1 -zxf -
-        JDK_BUILD_NUMBER=$(bin/java -version 2>&1 | grep -oE '\(build [0-9.]+\+[0-9]+-b[0-9.]+\)$' | sed -E 's/^.+\+([0-9]+)-b.+$/\1/')
-        echo ::set-output name=JDK_BUILD_NUMBER::"$JDK_BUILD_NUMBER"
-        cd .. && rm -rf official_build
-
-        JBR_BASE_NAME=jbr_${bundle_type}-${JBSDK_VERSION}
-        echo ::set-output name=JBR::"${JBR_BASE_NAME}-linux-x64-b${build_number}"
+        ref='${{ github.event.inputs.jbr_branch }}'
+        if [[ -z "$ref" ]]; then
+          ref="jb${JBSDK_VERSION}-b${build_number}"
+        fi
+        echo "Ref: $ref"
+        echo ::set-output name=ref::"$ref"
 
     - name: Init Build Dependencies
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo -E apt-get update -y
-        sudo -E apt-get install -y ant autoconf bison build-essential cmake flex git gperf ksh \
-            libasound2-dev libavcodec-dev libavformat-dev libcups2-dev libfontconfig1-dev \
-            libgl1-mesa-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            libgtk2.0-dev libgtk-3-dev libjpeg-dev libpng-dev libudev-dev libx11-dev libxext-dev \
-            libxml2-dev libxrandr-dev libxrender-dev libxslt1-dev libxt-dev libxtst-dev libxxf86vm-dev \
-            make mercurial openjdk-11-jdk pkg-config ruby tree x11proto-core-dev x11proto-xf86vidmode-dev zip
-        sudo -E apt-get clean -y
+        sudo apt-get update -y
+        sudo apt-get install -y libasound2-dev libavcodec-dev libavformat-dev libcups2-dev libgl1-mesa-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk2.0-dev libgtk-3-dev libudev-dev libxrandr-dev libxslt1-dev libxtst-dev libxxf86vm-dev x11proto-xf86vidmode-dev
+        sudo apt-get clean -y
 
-    - name: Compile JCEF
-      env:
-        JDK_11: /usr/lib/jvm/java-11-openjdk-amd64
-        ANT_HOME: /usr/share/ant
+    - name: Prepare JCEF
       run: |
-        git clone --depth=1 https://github.com/JetBrains/jcef.git jcef
-        cd jcef
-        git log -1
-        mkdir jcef_build && cd jcef_build
-        cmake -G "Unix Makefiles" -DPROJECT_ARCH="x86_64" -DCMAKE_BUILD_TYPE=Release ..
-        make -j2
-        cd ../jb/tools/linux && chmod +x *
-        ./build.sh all
+        aria2c -o jbrsdk_jcef.tgz 'https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk_jcef-${{ steps.vars.outputs.JBSDK_VERSION }}-linux-x64-b${{ steps.vars.outputs.build_number }}.tar.gz'
+        mkdir jcef_linux_x64
+        tar -zxvf jbrsdk_jcef.tgz --strip-components=1 -C jcef_linux_x64 --wildcards -- 'jbrsdk_jcef-*/jmods/gluegen.rt.jmod' 'jbrsdk_jcef-*/jmods/jogl.all.jmod' 'jbrsdk_jcef-*/jmods/jcef.jmod'
+        rm -f jbrsdk_jcef.tgz
+
+    - name: Clone JBR Repository
+      uses: actions/checkout@v3
+      with:
+        repository: JetBrains/JetBrainsRuntime
+        ref: ${{ steps.vars.outputs.ref }}
+        fetch-depth: 0 # 这里必须拉取全部历史，下面的mkimages_x64.sh里面会通过git log找tag
+        path: JetBrainsRuntime
 
     - name: Patch & Compile JetBrainsRuntime with JCEF
-      env:
-        JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
-        JDK_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+      id: compile
       run: |
-        git config --global core.autocrlf input
-        git clone --depth 1 -b "${{ inputs.ref }}" --single-branch https://github.com/JetBrains/JetBrainsRuntime.git
         cd JetBrainsRuntime
         git log -1
+
         patch -p1 < ../idea.patch
-        mkdir -p jcef_linux_x64 && cd jcef_linux_x64 && tar -xf ../../jcef/jcef_linux_x64.tar.gz && cd ..
-        jb/project/tools/linux/scripts/mkimages_x64.sh '${{ steps.vars.outputs.JBSDK_VERSION }}' '${{ steps.vars.outputs.JDK_BUILD_NUMBER }}' '${{ steps.vars.outputs.build_number }}' '${{ steps.vars.outputs.bundle_type }}'
+
+        mv ../jcef_linux_x64 ./
+
+        export BOOT_JDK="$JAVA_HOME_17_X64"
+
+        jb/project/tools/linux/scripts/mkimages_x64.sh '${{ steps.vars.outputs.build_number }}' jcef
+
+        echo ::set-output name=jbr_image::"$(ls -1 jbr_jcef-*-linux-x64-*.tar.gz)"
 
     - name: Create Release
       id: create_release
@@ -94,9 +106,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ inputs.ref }}
-        release_name:  ${{ inputs.release_name }}
-        body: ${{ inputs.release_body }}
+        tag_name: ${{ steps.vars.outputs.tag_name }}
+        release_name:  ${{ steps.vars.outputs.release_name }}
+        body: ${{ steps.vars.outputs.release_body }}
         draft: false
         prerelease: true
 
@@ -107,7 +119,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: JetBrainsRuntime/${{ steps.vars.outputs.JBR }}.tar.gz
-        asset_name: ${{ steps.vars.outputs.JBR }}.tar.gz
+        asset_path: JetBrainsRuntime/${{ steps.compile.outputs.jbr_image }}
+        asset_name: ${{ steps.compile.outputs.jbr_image }}
         asset_content_type: application/gzip
 
