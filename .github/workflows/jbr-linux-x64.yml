@@ -24,7 +24,12 @@ jobs:
       id: vars
       run: |
         release_id='${{ github.event.inputs.release_id }}'
-        curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sfL -m 60 -o /tmp/latest.json "${{ github.api_url }}/repos/JetBrains/JetBrainsRuntime/releases/${release_id:-latest}"
+        if [[ -z "$release_id" ]]; then
+          release_id=latest
+        elif [[ "$release_id" != latest && "$release_id" != tags/* ]]; then
+          release_id="tags/$release_id"
+        fi
+        curl -H "authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -sfL -m 60 -o /tmp/latest.json "${{ github.api_url }}/repos/JetBrains/JetBrainsRuntime/releases/${release_id}"
 
         release_name=$(jq -r .name /tmp/latest.json)
         echo "Release: $release_name"
