@@ -93,6 +93,7 @@ jobs:
       id: compile
       run: 
         cd JetBrainsRuntime
+        
         git log -1
 
         patch -p1 < ../idea.patch
