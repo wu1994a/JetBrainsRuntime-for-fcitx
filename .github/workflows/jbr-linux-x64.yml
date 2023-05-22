@@ -110,6 +110,6 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         artifacts: JetBrainsRuntime/${{ steps.compile.outputs.jbr_image }}
-        body: ${{ steps.vars.outputs.release_name }}
         tag: ${{ steps.vars.outputs.tag_name }}
+        generateReleaseNotes: true
 
