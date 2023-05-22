@@ -109,7 +109,7 @@ jobs:
       id: upload-release
       uses: ncipollo/release-action@v1
       with:
-        artifacts: JetBrainsRuntime/${{ steps.compile.outputs.jbr_image }}
-        tag: ${{ steps.vars.outputs.tag_name }}
+        artifacts: "JetBrainsRuntime/${{ steps.compile.outputs.jbr_image }}"
+        tag: "${{ steps.vars.outputs.tag_name }}"
         generateReleaseNotes: true
 
