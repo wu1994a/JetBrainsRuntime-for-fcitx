@@ -89,9 +89,9 @@ jobs:
 #         fetch-depth: 0 # 这里必须拉取全部历史，下面的mkimages_x64.sh里面会通过git log找tag
 #         path: JetBrainsRuntime
 
-#     - name: Patch & Compile JetBrainsRuntime with JCEF
-#       id: compile
-#       run: |
+    - name: Patch & Compile JetBrainsRuntime with JCEF
+      id: compile
+      run: 
 #         cd JetBrainsRuntime
 #         git log -1
 
@@ -103,7 +103,7 @@ jobs:
 
 #         jb/project/tools/linux/scripts/mkimages_x64.sh '${{ steps.vars.outputs.build_number }}' jcef
 
-#         echo "jbr_image=$(ls -1 jbr_jcef-*-linux-x64-*.tar.gz)" >> $GITHUB_OUTPUT
+        echo "jbr_image=$(ls -1 jbr_jcef-*-linux-x64-*.tar.gz)" >> $GITHUB_OUTPUT
 
     - name: Upload Release
       id: upload-release
