@@ -76,7 +76,7 @@ jobs:
         sudo apt-get update
         sudo apt-get upgrade -y
         sudo apt-get clean -y
-        git config --global url."https://gitclone.com/".insteadOf https://
+        # git config --global url."https://gitclone.com/".insteadOf https://
   build2:
     needs: build
     runs-on: self-hosted
