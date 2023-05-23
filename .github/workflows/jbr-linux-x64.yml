@@ -92,7 +92,7 @@ jobs:
     - name: Clone JBR Repository
       uses: actions/checkout@v3
       with:
-        repository: shenqingkeji/JetBrainsRuntime
+        repository: mirrors/JetBrainsRuntime
         ref: ${{ steps.vars.outputs.ref }}
         fetch-depth: 0 # 这里必须拉取全部历史，下面的mkimages_x64.sh里面会通过git log找tag
         path: JetBrainsRuntime
