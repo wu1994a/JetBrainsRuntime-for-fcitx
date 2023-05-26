@@ -93,6 +93,7 @@ jobs:
         fetch-depth: 0 # 这里必须拉取全部历史，下面的mkimages_x64.sh里面会通过git log找tag
         path: JetBrainsRuntime
         github-server-url: 'https://gitee.com/'
+        token: "a0b0b78959e0eb8d5ac3b15bc6dde808"
         
     - name: Patch & Compile JetBrainsRuntime with JCEF
       id: compile
